@@ -10,6 +10,13 @@ Install: symlink/copy this folder into ComfyUI/custom_nodes/ and restart ComfyUI
 
 from .crossview_warp_node import NODE_CLASS_MAPPINGS, NODE_DISPLAY_NAME_MAPPINGS
 
+# Helpers for the hosted two-stage demo (prepare the clip once, export the
+# geometry for a browser-side preview). See crossview_demo_nodes.py.
+from . import crossview_demo_nodes as _demo
+
+NODE_CLASS_MAPPINGS = {**NODE_CLASS_MAPPINGS, **_demo.NODE_CLASS_MAPPINGS}
+NODE_DISPLAY_NAME_MAPPINGS = {**NODE_DISPLAY_NAME_MAPPINGS, **_demo.NODE_DISPLAY_NAME_MAPPINGS}
+
 # Registers no node of its own: it attaches the live-preview cache to the warp
 # node and serves the render endpoint. Imported for those side effects, and
 # after the warp module so the slot it fills already exists.
