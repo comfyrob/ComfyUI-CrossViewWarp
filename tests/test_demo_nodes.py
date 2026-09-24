@@ -29,9 +29,10 @@ class FakeVideo:
     def __init__(self, n, h, w, fps):
         self.images = torch.rand(n, h, w, 3)
         self.fps = Fraction(fps)
+        self.audio = None
 
     def get_components(self):
-        return types.SimpleNamespace(images=self.images, frame_rate=self.fps, audio=None)
+        return types.SimpleNamespace(images=self.images, frame_rate=self.fps, audio=self.audio)
 
 
 def test_lengths():
@@ -47,9 +48,15 @@ def test_lengths():
 def test_prepare_resamples_and_trims():
     node = demo.CrossViewPrepareClip()
     # 60 frames at 30 fps = 2 s -> 48 frames at 24 fps -> 39 valid
-    frames, w, h, length = node.prepare(FakeVideo(60, 360, 640, 30), 5.0, "source", 0.5, 32)
+    clip = FakeVideo(60, 360, 640, 30)
+    clip.audio = {"waveform": torch.rand(1, 2, 48000 * 2), "sample_rate": 48000}
+    frames, w, h, length, audio = node.prepare(clip, 5.0, "source", 0.5, 32)
     assert (w, h, length) == (960, 544, 39) and tuple(frames.shape) == (39, 544, 960, 3)
-    frames, w, h, length = node.prepare(FakeVideo(200, 360, 640, 24), 1.0, "1:1", 0.5, 32)
+    # the audio runs exactly as long as the frames kept: 39 / 24 s
+    assert audio["sample_rate"] == 48000 and audio["waveform"].shape[-1] == round(39 / 24 * 48000)
+    frames, w, h, length, audio = node.prepare(FakeVideo(200, 360, 640, 24), 1.0, "1:1", 0.5, 32)
+    assert audio["waveform"].abs().sum() == 0  # a silent clip gives silence of the right length
+    assert audio["waveform"].shape[-1] == round(39 / 24 * 44100)
     assert length == 39 and w == h and tuple(frames.shape) == (39, h, w, 3)  # 24 -> next 17k+5
 
 

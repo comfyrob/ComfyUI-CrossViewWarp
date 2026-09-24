@@ -23,6 +23,7 @@ import struct
 import zlib
 
 import numpy as np
+import torch
 
 import comfy.utils
 import folder_paths
@@ -66,6 +67,17 @@ def _target_size(aspect, src_w, src_h, megapixels, multiple):
     return int(w), int(h)
 
 
+def _trim_audio(audio, seconds):
+    """The first `seconds` of the clip's audio, so it lines up with the frames
+    kept from its start; silence of that length when the clip is silent."""
+    if audio is None or audio.get("waveform") is None:
+        rate = 44100
+        return {"waveform": torch.zeros(1, 2, int(round(seconds * rate))), "sample_rate": rate}
+    rate = int(audio["sample_rate"])
+    wave = audio["waveform"][..., : int(round(seconds * rate))]
+    return {"waveform": wave.contiguous(), "sample_rate": rate}
+
+
 class CrossViewPrepareClip:
     """Video -> the exact frames both stages warp and generate from.
 
@@ -90,8 +102,15 @@ class CrossViewPrepareClip:
             }
         }
 
-    RETURN_TYPES = ("IMAGE", "INT", "INT", "INT")
-    RETURN_NAMES = ("frames", "width", "height", "length")
+    RETURN_TYPES = ("IMAGE", "INT", "INT", "INT", "AUDIO")
+    RETURN_NAMES = ("frames", "width", "height", "length", "audio")
+    OUTPUT_TOOLTIPS = (
+        "The frames both stages use, at 24 fps.",
+        "Frame width.",
+        "Frame height.",
+        "Frame count, on H3's 17k+5 grid.",
+        "The clip's own audio over exactly those frames, silence if it has none.",
+    )
     FUNCTION = "prepare"
     CATEGORY = "CrossView"
 
@@ -114,7 +133,7 @@ class CrossViewPrepareClip:
         method = "area" if width * height < src_w * src_h else "bicubic"
         x = comfy.utils.common_upscale(x, width, height, method, "center")
         frames = x.movedim(1, -1).clamp(0.0, 1.0).contiguous()
-        return (frames, width, height, length)
+        return (frames, width, height, length, _trim_audio(comps.audio, length / FPS))
 
 
 class CrossViewGeometryExport:
